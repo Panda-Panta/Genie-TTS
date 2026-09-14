@@ -8,8 +8,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, QObject, QSettings, QThread
 
-from ..Converter.Converter import convert
-from ..Converter.v2.Converter import find_ckpt_and_pth
+# Lazy load converter to allow GUI inference without torch installed
+def get_converter():
+    from ..Converter.Converter import convert
+    from ..Converter.v2.Converter import find_ckpt_and_pth
+    return convert, find_ckpt_and_pth
 
 
 def get_timestamp_msg(message: str, level: str = "INFO") -> str:
@@ -34,6 +37,12 @@ class Worker(QObject):
     def run(self):
         """执行转换任务"""
         try:
+            try:
+                convert, find_ckpt_and_pth = get_converter()
+            except ImportError as e:
+                self.log(f"模型转换功能需要安装 PyTorch：{e}", "ERROR")
+                return
+
             root_output_dir = os.path.abspath("./Output")
             for folder in self.folders:
                 character_name: str = os.path.basename(folder)

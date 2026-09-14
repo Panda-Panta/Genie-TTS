@@ -66,10 +66,22 @@ def ensure_exists(path: str, name: str):
 文件结构与项目 Midori 同步。
 """
 
-GENIE_DATA_DIR: str = os.getenv(
-    "GENIE_DATA_DIR",
-    "./GenieData"
-)
+import sys
+
+def _get_default_genie_data_dir() -> str:
+    env_path = os.getenv("GENIE_DATA_DIR")
+    if env_path:
+        return env_path
+    if getattr(sys, 'frozen', False):
+        exe_dir = os.path.dirname(sys.executable)
+        cand = os.path.join(exe_dir, "GenieData")
+        if os.path.exists(cand):
+            return cand
+    if os.path.exists("./GenieData"):
+        return "./GenieData"
+    return "./GenieData"
+
+GENIE_DATA_DIR: str = _get_default_genie_data_dir()
 
 """
 Japanese_G2P_DIR: str = os.getenv(
@@ -104,10 +116,14 @@ ROBERTA_MODEL_DIR: str = os.getenv(
 )
 
 if not os.path.exists(GENIE_DATA_DIR):
-    print("⚠️ GenieData folder not found.")
-    choice = input("Would you like to download it automatically from HuggingFace? (y/N): ").strip().lower()
-    if choice == "y":
-        download_genie_data()
+    try:
+        print("⚠️ GenieData folder not found.")
+        if sys.stdin and sys.stdin.isatty():
+            choice = input("Would you like to download it automatically from HuggingFace? (y/N): ").strip().lower()
+            if choice == "y":
+                download_genie_data()
+    except Exception:
+        pass
 
 # ---- Run directory checks ----
 ensure_exists(HUBERT_MODEL_DIR, "HUBERT_MODEL_DIR")

@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 _reference_audios: Dict[str, dict] = {}
 SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
 
+def set_server_reference_audio(character_name: str, audio_path: str, audio_text: str, language: str):
+    _reference_audios[character_name] = {
+        'audio_path': audio_path,
+        'audio_text': audio_text,
+        'language': normalize_language(language),
+    }
+
+def get_server_reference_audios() -> Dict[str, dict]:
+    return _reference_audios
+
 app = FastAPI()
 
 
@@ -119,10 +129,19 @@ async def audio_stream_generator(queue: asyncio.Queue) -> AsyncIterator[bytes]:
         yield chunk
 
 
+@app.get("/characters")
+def list_characters_endpoint():
+    return list(_reference_audios.keys())
+
+
 @app.post("/tts")
 async def tts_endpoint(payload: TTSPayload):
-    if payload.character_name not in _reference_audios:
-        raise HTTPException(status_code=404, detail="Character not found or reference audio not set.")
+    char_name = payload.character_name
+    if char_name not in _reference_audios:
+        if len(_reference_audios) == 1:
+            char_name = next(iter(_reference_audios.keys()))
+        else:
+            raise HTTPException(status_code=404, detail="Character not found or reference audio not set.")
 
     loop = asyncio.get_running_loop()
     stream_queue: asyncio.Queue[Union[bytes, None]] = asyncio.Queue()

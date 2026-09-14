@@ -15,7 +15,9 @@ from ..SymbolsV2 import PUNCTUATION
 from ...Core.Resources import English_G2P_DIR
 
 # nltk 路径和分词器初始化
-nltk.data.path.append(English_G2P_DIR)
+_abs_english_g2p_dir = os.path.abspath(English_G2P_DIR)
+if _abs_english_g2p_dir not in nltk.data.path:
+    nltk.data.path.insert(0, _abs_english_g2p_dir)
 word_tokenize = TweetTokenizer().tokenize
 
 # 路径定义
