@@ -85,6 +85,13 @@ hiddenimports += collect_submodules('starlette')
 hiddenimports += collect_submodules('pydantic')
 hiddenimports += collect_submodules('pydantic_core')
 hiddenimports += collect_submodules('PySide6')
+hiddenimports += collect_submodules('pyopenjtalk')
+hiddenimports += collect_submodules('jieba_fast')
+hiddenimports += collect_submodules('g2pM')
+hiddenimports += collect_submodules('pypinyin')
+hiddenimports += collect_submodules('eunjeon')
+hiddenimports += collect_submodules('g2pk2')
+hiddenimports += collect_submodules('genie_tts')
 
 a = Analysis(
     ['entry_api.py'],
