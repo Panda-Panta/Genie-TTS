@@ -23,6 +23,13 @@ binaries += collect_dynamic_libs('onnxruntime')
 binaries += collect_dynamic_libs('pyopenjtalk')
 binaries += collect_dynamic_libs('sounddevice')
 
+uv_dlls = os.path.join(os.environ.get('USERPROFILE', ''), r'AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\DLLs')
+if os.path.exists(uv_dlls):
+    for dll in ['libssl-3-x64.dll', 'libcrypto-3-x64.dll', '_ssl.pyd']:
+        p = os.path.join(uv_dlls, dll)
+        if os.path.exists(p):
+            binaries.append((p, '.'))
+
 # Collect hidden imports
 hiddenimports = [
     'genie_tts',
