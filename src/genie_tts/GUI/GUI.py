@@ -26,6 +26,7 @@ from .PresetManager import PresetManager
 from .ServerManager import InferenceWorker
 from .ConverterWidget import ConverterWidget
 from .ApiServerWidget import ApiServerWidget
+from ..ModelManager import model_manager
 
 """
 抄自 Genie CUDA Runtime
@@ -250,8 +251,9 @@ class TTSWidget(QWidget):
         group_infer = QGroupBox("推理参数")
         layout_infer = QFormLayout()
         self.combo_device = MyComboBox()
-        self.combo_device.addItems(["CPU"])
-        self.combo_device.setEnabled(False)
+        devices = model_manager.get_supported_devices()
+        self.combo_device.addItems(devices)
+        self.combo_device.setEnabled(len(devices) > 1)
         self.combo_quality = MyComboBox()
         self.combo_quality.addItems(["质量优先"])
         self.combo_quality.setEnabled(False)
@@ -262,7 +264,7 @@ class TTSWidget(QWidget):
         self.combo_mode.setEnabled(False)
         self.combo_lang = MyComboBox()
         self.combo_lang.addItems(["Chinese", "English", "Japanese"])
-        layout_infer.addRow("推理设备:\n(重启生效)", self.combo_device)
+        layout_infer.addRow("推理设备:", self.combo_device)
         layout_infer.addRow("推理需求:", self.combo_quality)
         layout_infer.addRow("分句方式:", self.combo_split)
         layout_infer.addRow("推理模式:", self.combo_mode)
@@ -358,7 +360,7 @@ class TTSWidget(QWidget):
             "genie_dir": self.file_genie.get_path(),
             "ref_audio": self.file_ref_audio.get_path(),
             "ref_text": self.input_ref_text.text(),
-            "device": self.combo_device.currentText().lower(),
+            "device": "gpu" if "gpu" in self.combo_device.currentText().lower() else "cpu",
             "quality": self.combo_quality.currentText(),
             "split": self.combo_split.currentText(),
             "mode": self.combo_mode.currentText(),
@@ -383,7 +385,16 @@ class TTSWidget(QWidget):
         self.file_ref_audio.set_path(data.get("ref_audio", ""))
         self.input_ref_text.setText(data.get("ref_text", ""))
 
-        set_combo_text(self.combo_device, data.get("device", ""))
+        dev_val = str(data.get("device", "")).lower()
+        if dev_val:
+            for i in range(self.combo_device.count()):
+                txt = self.combo_device.itemText(i).lower()
+                if (dev_val == "gpu" or "gpu" in dev_val) and "gpu" in txt:
+                    self.combo_device.setCurrentIndex(i)
+                    break
+                elif dev_val == "cpu" and "cpu" in txt:
+                    self.combo_device.setCurrentIndex(i)
+                    break
         set_combo_text(self.combo_quality, data.get("quality", ""))
         set_combo_text(self.combo_split, data.get("split", ""))
         set_combo_text(self.combo_mode, data.get("mode", ""))
@@ -477,6 +488,7 @@ class TTSWidget(QWidget):
 
         self.btn_start.setEnabled(False)
         self.btn_start.setText("推理中...")
+        model_manager.set_device(self.combo_device.currentText())
         self._chain_import_model()
 
     # ==================== 推理链式调用 ====================

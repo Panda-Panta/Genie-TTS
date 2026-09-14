@@ -26,7 +26,7 @@ classifiers = [
 
 dependencies = [
     "onnx", # ONNX 模型格式支持
-    "onnxruntime==1.22.1", # ONNX 推理引擎, 指定版本号以避免 1.23 的性能倒退
+    "onnxruntime-directml==1.22.0", # ONNX 推理引擎 (支持 DirectML 显卡加速与 CPU 平滑回退)
     "tokenizers", # HuggingFace tokenizer
     "numpy", # 数值计算
     "soundfile", # 音频读写

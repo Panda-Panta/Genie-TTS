@@ -186,12 +186,78 @@ class ModelManager:
         )
         self.character_to_language: Dict[str, str] = {}
         self.character_model_paths: Dict[str, str] = {}
-        self.providers = ["CPUExecutionProvider"]
+        self.current_device: str = "CPU"
+        self.providers: List = ["CPUExecutionProvider"]
 
         self.cn_hubert: Optional[InferenceSession] = None
         self.speaker_verification_model: Optional[InferenceSession] = None
         self.roberta_model: Optional[InferenceSession] = None
         self.roberta_tokenizer: Optional[Tokenizer] = None
+
+        # 默认自动探测最佳设备 (DirectML/CUDA -> CPU)
+        self.set_device("auto")
+
+    @staticmethod
+    def get_supported_devices() -> List[str]:
+        """获取当前系统环境支持的推理设备列表"""
+        available = onnxruntime.get_available_providers()
+        devices = []
+        if "DmlExecutionProvider" in available:
+            devices.append("GPU (DirectML)")
+        if "CUDAExecutionProvider" in available:
+            devices.append("GPU (CUDA)")
+        devices.append("CPU")
+        return devices
+
+    def set_device(self, device: str = "auto", device_id: int = 0) -> str:
+        """
+        设置推理设备。
+        device: "gpu" / "dml" / "directml" / "cuda" / "cpu" / "auto"
+        device_id: 显卡编号（默认 0）
+        返回实际生效的设备描述
+        """
+        available = onnxruntime.get_available_providers()
+        dev = str(device).lower()
+
+        use_gpu = False
+        if any(k in dev for k in ["gpu", "dml", "directml", "cuda"]):
+            use_gpu = True
+        elif dev == "auto":
+            use_gpu = ("DmlExecutionProvider" in available or "CUDAExecutionProvider" in available)
+
+        old_providers = list(self.providers)
+        if use_gpu and "DmlExecutionProvider" in available:
+            self.providers = [
+                ("DmlExecutionProvider", {"device_id": int(device_id)}),
+                "CPUExecutionProvider",
+            ]
+            self.current_device = f"GPU (DirectML, Device {device_id})"
+        elif use_gpu and "CUDAExecutionProvider" in available:
+            self.providers = [
+                ("CUDAExecutionProvider", {"device_id": int(device_id)}),
+                "CPUExecutionProvider",
+            ]
+            self.current_device = f"GPU (CUDA, Device {device_id})"
+        else:
+            self.providers = ["CPUExecutionProvider"]
+            self.current_device = "CPU"
+
+        if old_providers != self.providers:
+            logger.info(f"[ModelManager] 推理后端已切换为: {self.current_device}，已清空旧模型缓存。")
+            self.clear_cache()
+
+        return self.current_device
+
+    def clear_cache(self):
+        """清空已缓存的角色模型与辅助模型，以便释放资源或使用新设备重新初始化"""
+        self.character_to_model.clear()
+        self.character_to_language.clear()
+        self.character_model_paths.clear()
+        self.cn_hubert = None
+        self.speaker_verification_model = None
+        self.roberta_model = None
+        self.roberta_tokenizer = None
+
 
     def load_roberta_model(self) -> bool:
         # 将原来的“固定路径加载”替换为“先解析资源路径再加载”。
@@ -364,7 +430,8 @@ class ModelManager:
             logger.info(
                 f"Character {character_name.capitalize()} loaded successfully.\n"
                 f"- Model Path: {model_dir}\n"
-                f"- Model Type: {'V2ProPlus' if is_v2pp else 'V2'}"
+                f"- Model Type: {'V2ProPlus' if is_v2pp else 'V2'}\n"
+                f"- Device: {self.current_device}"
             )
 
             self.character_to_model[character_name] = model_dict

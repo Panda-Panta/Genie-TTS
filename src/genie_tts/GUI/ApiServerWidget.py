@@ -130,17 +130,22 @@ class StartupWarmupWorker(QThread):
     finished_signal = Signal(bool, str)
     log_signal = Signal(str)
 
-    def __init__(self, char_name: str, model_dir: str, ref_audio: str, ref_text: str, lang: str):
+    def __init__(self, char_name: str, model_dir: str, ref_audio: str, ref_text: str, lang: str = "Japanese", device: str = "auto"):
         super().__init__()
         self.char_name = char_name
         self.model_dir = model_dir
         self.ref_audio = ref_audio
         self.ref_text = ref_text
         self.lang = lang
+        self.device = device
 
     def run(self):
         try:
             norm_lang = normalize_language(self.lang)
+
+            # 配置推理设备并输出日志
+            actual_dev = model_manager.set_device(self.device)
+            self.log_signal.emit(f"[INFO] 推理计算设备就绪: {actual_dev}")
 
             self.log_signal.emit(f"[INFO] 正在载入角色模型 '{self.char_name}'...")
             load_character(character_name=self.char_name, onnx_model_dir=self.model_dir, language=norm_lang)
@@ -238,6 +243,14 @@ class ApiServerWidget(QWidget):
         form_config.addRow("参考音频文件:", self.txt_ref_audio)
         form_config.addRow("参考音频文本:", self.txt_ref_text)
         form_config.addRow("目标语言:", self.txt_lang)
+
+        # 推理设备选择
+        self.combo_device = QComboBox()
+        self.combo_device.setFixedHeight(28)
+        devices = model_manager.get_supported_devices()
+        self.combo_device.addItems(devices)
+        self.combo_device.setEnabled(len(devices) > 1)
+        form_config.addRow("推理计算设备:", self.combo_device)
 
         # 服务 IP 与端口
         hbox_network = QHBoxLayout()
@@ -380,6 +393,17 @@ class ApiServerWidget(QWidget):
         self.txt_ref_text.setText(data.get("ref_text", ""))
         self.txt_lang.setText(data.get("lang", "Japanese"))
 
+        dev_val = str(data.get("device", "")).lower()
+        if dev_val:
+            for i in range(self.combo_device.count()):
+                txt = self.combo_device.itemText(i).lower()
+                if (dev_val == "gpu" or "gpu" in dev_val) and "gpu" in txt:
+                    self.combo_device.setCurrentIndex(i)
+                    break
+                elif dev_val == "cpu" and "cpu" in txt:
+                    self.combo_device.setCurrentIndex(i)
+                    break
+
     @Slot(str)
     def _append_log(self, text: str):
         self.log_text.moveCursor(QTextCursor.MoveOperation.End)
@@ -431,8 +455,11 @@ class ApiServerWidget(QWidget):
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.combo_presets.setEnabled(False)
+        self.combo_device.setEnabled(False)
         self.input_host.setEnabled(False)
         self.input_port.setEnabled(False)
+
+        selected_device = self.combo_device.currentText()
 
         # 启动异步工作线程执行预加载与试音
         self.warmup_worker = StartupWarmupWorker(
@@ -440,7 +467,8 @@ class ApiServerWidget(QWidget):
             model_dir=model_dir,
             ref_audio=ref_audio,
             ref_text=ref_text,
-            lang=lang
+            lang=lang,
+            device=selected_device
         )
         self.warmup_worker.log_signal.connect(self._append_log)
         self.warmup_worker.finished_signal.connect(self._on_warmup_finished)
@@ -472,6 +500,7 @@ class ApiServerWidget(QWidget):
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.combo_presets.setEnabled(True)
+        self.combo_device.setEnabled(len(model_manager.get_supported_devices()) > 1)
         self.input_host.setEnabled(True)
         self.input_port.setEnabled(True)
 
