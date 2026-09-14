@@ -1,5 +1,4 @@
 import os
-from huggingface_hub import snapshot_download
 
 
 GENIE_DATA_REPO_ID = "High-Logic/Genie"
@@ -25,6 +24,7 @@ def download_roberta_data(model_variant: str = "fp32") -> str:
         "This may take a while."
     )
     os.makedirs(target_dir, exist_ok=True)
+    from huggingface_hub import snapshot_download
     snapshot_download(
         repo_id=ROBERTA_REPO_ID,
         repo_type="model",
@@ -40,6 +40,7 @@ def download_genie_data() -> None:
     # 保持原来的 GenieData 下载行为不变，只是在后面追加下载可选的
     # Chinese RoBERTa 资源，避免改动现有用户熟悉的入口和交互流程。
     print(f"🚀 Starting download Genie-TTS resources… This may take a few moments. ⏳")
+    from huggingface_hub import snapshot_download
     snapshot_download(
         repo_id=GENIE_DATA_REPO_ID,
         repo_type="model",

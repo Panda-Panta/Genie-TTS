@@ -1,5 +1,6 @@
 import asyncio
 import os
+import struct
 from typing import AsyncIterator, Optional, Callable, Union, Dict
 import logging
 
@@ -119,9 +120,35 @@ def run_tts_in_background(
         tts_player.wait_for_tts_completion()
     except Exception as e:
         logger.error(f"Error in TTS background task: {e}", exc_info=True)
+    finally:
+        chunk_callback(None)
+
+
+def make_wav_header(sample_rate: int = 32000, num_channels: int = 1, bits_per_sample: int = 16) -> bytes:
+    byte_rate = sample_rate * num_channels * bits_per_sample // 8
+    block_align = num_channels * bits_per_sample // 8
+    data_size = 0x7fffffff  # max for streaming WAV
+    riff_size = data_size + 36
+    return struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF',
+        riff_size,
+        b'WAVE',
+        b'fmt ',
+        16,
+        1,  # PCM
+        num_channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bits_per_sample,
+        b'data',
+        data_size
+    )
 
 
 async def audio_stream_generator(queue: asyncio.Queue) -> AsyncIterator[bytes]:
+    yield make_wav_header(sample_rate=32000, num_channels=1, bits_per_sample=16)
     while True:
         chunk = await queue.get()
         if chunk is None:
@@ -136,12 +163,19 @@ def list_characters_endpoint():
 
 @app.post("/tts")
 async def tts_endpoint(payload: TTSPayload):
-    char_name = payload.character_name
-    if char_name not in _reference_audios:
+    char_name = payload.character_name.strip() if payload.character_name else ""
+    if not char_name or char_name not in _reference_audios:
         if len(_reference_audios) == 1:
             char_name = next(iter(_reference_audios.keys()))
+        elif len(_reference_audios) > 1 and char_name in ("", "Default", "default"):
+            char_name = next(iter(_reference_audios.keys()))
+        elif not _reference_audios:
+            raise HTTPException(status_code=400, detail="No character is loaded or reference audio set in server.")
         else:
-            raise HTTPException(status_code=404, detail="Character not found or reference audio not set.")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Character '{char_name}' not found. Available characters: {list(_reference_audios.keys())}"
+            )
 
     loop = asyncio.get_running_loop()
     stream_queue: asyncio.Queue[Union[bytes, None]] = asyncio.Queue()
@@ -152,7 +186,7 @@ async def tts_endpoint(payload: TTSPayload):
     loop.run_in_executor(
         None,
         run_tts_in_background,
-        payload.character_name,
+        char_name,
         payload.text,
         payload.split_sentence,
         payload.save_path,

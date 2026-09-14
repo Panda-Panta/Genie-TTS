@@ -1,4 +1,3 @@
-from huggingface_hub import snapshot_download
 import os
 from typing import Dict
 
@@ -28,6 +27,7 @@ def download_chara(chara: str, version: str = "v2ProPlus") -> str:
 
     print(f"🚀 Starting download of model for character '{chara}'. This may take a few moments... ⏳")
     remote_path = f"CharacterModels/{version}/{chara}/*"
+    from huggingface_hub import snapshot_download
     snapshot_download(
         repo_id="High-Logic/Genie",
         repo_type="model",
