@@ -68,7 +68,20 @@ class LogRedirector(QObject):
                     pass
 
     def flush(self):
-        pass
+        if self._old_stdout is not None:
+            try:
+                self._old_stdout.flush()
+            except Exception:
+                pass
+
+    def isatty(self) -> bool:
+        return False
+
+    def readable(self) -> bool:
+        return False
+
+    def writable(self) -> bool:
+        return True
 
 
 class QtLogHandler(logging.Handler):
@@ -92,7 +105,19 @@ class UvicornServerThread(threading.Thread):
         self.server: Optional[uvicorn.Server] = None
 
     def run(self):
-        config = uvicorn.Config(app=app, host=self.host, port=self.port, log_level="info")
+        log_config = uvicorn.config.LOGGING_CONFIG.copy()
+        if "formatters" in log_config:
+            if "default" in log_config["formatters"]:
+                log_config["formatters"]["default"]["use_colors"] = False
+            if "access" in log_config["formatters"]:
+                log_config["formatters"]["access"]["use_colors"] = False
+        config = uvicorn.Config(
+            app=app,
+            host=self.host,
+            port=self.port,
+            log_level="info",
+            log_config=log_config
+        )
         self.server = uvicorn.Server(config)
         self.server.run()
 
@@ -162,8 +187,12 @@ class ApiServerWidget(QWidget):
         sys.stdout = self.redirector
         sys.stderr = self.redirector
 
-        # 连接 logging 输出
+        # 连接 logging 输出，清理可能存在的 None 流处理器
         root_logger = logging.getLogger()
+        for h in list(root_logger.handlers):
+            if isinstance(h, logging.StreamHandler):
+                if getattr(h, 'stream', None) is None:
+                    root_logger.removeHandler(h)
         self.log_handler = QtLogHandler(self.redirector)
         self.log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
         root_logger.addHandler(self.log_handler)

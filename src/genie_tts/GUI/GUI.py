@@ -54,6 +54,15 @@ class LogRedirector(QObject):
     def flush(self):
         pass
 
+    def isatty(self) -> bool:
+        return False
+
+    def readable(self) -> bool:
+        return False
+
+    def writable(self) -> bool:
+        return True
+
 
 # ==================== UI 组件实现 ====================
 
