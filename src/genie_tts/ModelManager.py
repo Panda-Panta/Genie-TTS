@@ -406,18 +406,27 @@ class ModelManager:
                 sess_options = onnxruntime.SessionOptions()
                 sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
+                # 针对多模型异构优化分配：
+                # T2S 自回归解码模型因包含 100+ 轮高频微小步循环（涉及 50 组变长张量），
+                # 放在 CPU 上执行具备零跨总线传输延迟优势；
+                # 重度大算力模型 (VITS 声码器 / Prompt Encoder) 则使用 GPU 硬件加速。
+                if model_file in [GSVModelFile.T2S_STAGE_DECODER_FP32, GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32, GSVModelFile.T2S_ENCODER_FP32]:
+                    model_providers = ["CPUExecutionProvider"]
+                else:
+                    model_providers = self.providers
+
                 if os.path.exists(model_path):
                     fp16_bin_name = onnx_to_fp16_map.get(model_file)
                     fp16_bin_path = os.path.join(model_dir, fp16_bin_name) if fp16_bin_name else None
 
                     if fp16_bin_path and os.path.exists(fp16_bin_path):
                         model_dict[model_file] = load_session_with_fp16_conversion(
-                            model_path, fp16_bin_path, self.providers, sess_options
+                            model_path, fp16_bin_path, model_providers, sess_options
                         )
                     else:
                         model_dict[model_file] = onnxruntime.InferenceSession(
                             model_path,
-                            providers=self.providers,
+                            providers=model_providers,
                             sess_options=sess_options,
                         )
                 elif model_file == GSVModelFile.PROMPT_ENCODER:
