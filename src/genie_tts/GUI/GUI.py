@@ -25,7 +25,7 @@ from .AudioPlayer import AudioPlayer
 from .PresetManager import PresetManager
 from .ServerManager import InferenceWorker
 from .ConverterWidget import ConverterWidget
-from .ApiServerWidget import ApiServerWidget
+from .ApiServerWidget import ApiServerWidget, get_config_file_path
 from ..ModelManager import model_manager
 
 """
@@ -191,7 +191,7 @@ class TTSWidget(QWidget):
 
         # ---------------- 顶部：预设管理器 ----------------
         self.preset_manager = PresetManager(
-            presets_file='./UserData/GenieGuiConfig.json',
+            presets_file=get_config_file_path(),
             state_getter=self.get_ui_state,
         )
         self.preset_manager.sig_load_state.connect(self.apply_ui_state)

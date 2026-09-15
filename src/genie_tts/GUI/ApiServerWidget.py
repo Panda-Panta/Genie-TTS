@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, Slot, QObject, QThread
 from PySide6.QtGui import QTextCursor, QFont, QCloseEvent
 
-from ..Server import app, set_server_reference_audio
+from ..Server import app, set_server_reference_audio, _server_tts_lock, auto_load_presets_from_config
 from ..ModelManager import model_manager
 from ..Utils.Language import normalize_language
 from ..Internal import load_character, set_reference_audio
@@ -153,23 +153,30 @@ class StartupWarmupWorker(QThread):
 
             self.log_signal.emit(f"[INFO] 正在提取参考音频特征并绑定: {self.ref_audio}")
             set_reference_audio(character_name=self.char_name, audio_path=self.ref_audio, audio_text=self.ref_text, language=norm_lang)
-            set_server_reference_audio(character_name=self.char_name, audio_path=self.ref_audio, audio_text=self.ref_text, language=norm_lang)
+            set_server_reference_audio(
+                character_name=self.char_name,
+                audio_path=self.ref_audio,
+                audio_text=self.ref_text,
+                language=norm_lang,
+                model_dir=self.model_dir
+            )
             self.log_signal.emit(f"[INFO] 参考音频特征提取就绪。")
 
             self.log_signal.emit("[INFO] 正在执行模型初次推理与预热 (Warm-up)...")
             gsv_model = model_manager.get(self.char_name)
             warmup_char = "你好" if norm_lang in ["zh", "chinese"] else ("Hello" if norm_lang in ["en", "english"] else "あ")
             tts_client.stop_event.clear()
-            _ = tts_client.tts(
-                text=warmup_char,
-                prompt_audio=context.current_prompt_audio,
-                encoder=gsv_model.T2S_ENCODER,
-                first_stage_decoder=gsv_model.T2S_FIRST_STAGE_DECODER,
-                stage_decoder=gsv_model.T2S_STAGE_DECODER,
-                vocoder=gsv_model.VITS,
-                prompt_encoder=gsv_model.PROMPT_ENCODER,
-                language=gsv_model.LANGUAGE,
-            )
+            with _server_tts_lock:
+                _ = tts_client.tts(
+                    text=warmup_char,
+                    prompt_audio=context.current_prompt_audio,
+                    encoder=gsv_model.T2S_ENCODER,
+                    first_stage_decoder=gsv_model.T2S_FIRST_STAGE_DECODER,
+                    stage_decoder=gsv_model.T2S_STAGE_DECODER,
+                    vocoder=gsv_model.VITS,
+                    prompt_encoder=gsv_model.PROMPT_ENCODER,
+                    language=gsv_model.LANGUAGE,
+                )
             self.log_signal.emit(f"[INFO] ✅ 角色【{self.char_name}】加载与预热全部完成！模型已常驻内存。")
             self.finished_signal.emit(True, f"角色【{self.char_name}】预热完成，API已就绪！")
         except Exception as e:
@@ -374,6 +381,23 @@ class ApiServerWidget(QWidget):
                 }
             }
 
+        # 同步将所有有效预设预注册到服务端 _reference_audios 中
+        for name, data in self.presets.items():
+            if not isinstance(data, dict):
+                continue
+            m_dir = resolve_path(data.get("genie_dir", ""))
+            r_audio = resolve_path(data.get("ref_audio", ""))
+            r_text = data.get("ref_text", "")
+            r_lang = data.get("lang", "Japanese")
+            if os.path.exists(m_dir) and os.path.exists(r_audio) and r_text:
+                set_server_reference_audio(
+                    character_name=name,
+                    audio_path=r_audio,
+                    audio_text=r_text,
+                    language=r_lang,
+                    model_dir=m_dir
+                )
+
         prev_text = self.combo_presets.currentText()
         self.combo_presets.blockSignals(True)
         self.combo_presets.clear()
@@ -438,6 +462,15 @@ class ApiServerWidget(QWidget):
         except ValueError:
             QMessageBox.warning(self, "提示", "端口号必须为有效整数！")
             return
+
+        # 在开启网络端口前，确保当前所选预设及全部预设已同步注册至服务端
+        set_server_reference_audio(
+            character_name=char_name,
+            audio_path=ref_audio,
+            audio_text=ref_text,
+            language=lang,
+            model_dir=model_dir
+        )
 
         # 启动 Uvicorn 服务
         if not self.server_thread or not self.server_thread.is_alive():
